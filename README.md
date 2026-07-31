@@ -13,6 +13,20 @@ serialized, and the cleaner releases its models before SeedVR2 begins, so the te
 finishes, the gateway requests a model unload and waits for ComfyUI to confirm that
 its PyTorch VRAM reservation has been released before marking the job complete.
 
+## Screenshots
+
+### Web interface
+
+![Defractalize web interface with multi-image upload and restoration controls](docs/screenshots/defractalize-dashboard.png)
+
+### Interactive before/after comparison
+
+![Interactive comparison between the original and restored image](docs/screenshots/defractalize-before-after.png)
+
+### Recent results
+
+![Recent restoration jobs displayed as a thumbnail gallery](docs/screenshots/defractalize-recent-jobs.png)
+
 ## What is included
 
 - A FastAPI gateway on `http://localhost:8080`
