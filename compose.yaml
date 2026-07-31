@@ -1,0 +1,87 @@
+name: image-restoration-stack
+
+services:
+  gateway:
+    build:
+      context: ./gateway
+    environment:
+      CLEANER_URL: http://cleaner:8001
+      SEEDVR_URL: http://seedvr:8188
+      DATA_DIR: /data/jobs
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
+      BACKEND_TIMEOUT_SECONDS: ${BACKEND_TIMEOUT_SECONDS:-900}
+      GPU_RELEASE_TIMEOUT_SECONDS: ${GPU_RELEASE_TIMEOUT_SECONDS:-30}
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+    volumes:
+      - gateway_data:/data
+    depends_on:
+      cleaner:
+        condition: service_started
+      seedvr:
+        condition: service_started
+    restart: unless-stopped
+
+  cleaner:
+    build:
+      context: ./cleaner
+      args:
+        CLEANER_COMMIT: ${CLEANER_COMMIT:-5389c6a3bd0eb245ea380bcfcf4c75845709d2da}
+    environment:
+      HF_HOME: /cache/huggingface
+      REQUIRE_CUDA: "1"
+      OFFLOAD_AFTER_REQUEST: "1"
+      MAX_IMAGE_PIXELS: "50000000"
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - hf_cache:/cache/huggingface
+    gpus: all
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      start_period: 180s
+      retries: 12
+    restart: unless-stopped
+
+  seedvr:
+    build:
+      context: ./seedvr
+      args:
+        COMFYUI_COMMIT: ${COMFYUI_COMMIT:-9cf91339b708a245762fa38ffeec9702b381e0db}
+    environment:
+      HF_HOME: /cache/huggingface
+      HF_TOKEN: ${HF_TOKEN:-}
+      SEEDVR_REVISION: ${SEEDVR_REVISION:-7694e0f361dde8521668e9f8e1d242a1ee90035a}
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
+    volumes:
+      - hf_cache:/cache/huggingface
+      - seedvr_models:/opt/ComfyUI/models
+      - seedvr_data:/data
+    gpus: all
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8188/system_stats', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      start_period: 300s
+      retries: 18
+    restart: unless-stopped
+
+volumes:
+  gateway_data:
+  hf_cache:
+  seedvr_models:
+  seedvr_data:

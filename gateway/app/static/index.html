@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>defractalize</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><circle cx=%2232%22 cy=%2232%22 r=%2228%22 fill=%22%2373d7ba%22/><path d=%22M20 32h24M25 25l-7 7 7 7M39 25l7 7-7 7%22 fill=%22none%22 stroke=%22%2307130f%22 stroke-width=%225%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/></svg>">
+    <link rel="stylesheet" href="/styles.css?v=defractolize-label">
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>defractalize</h1>
+        <p class="lede">Clean GPT Image 2 texture artifacts, restore detail with SeedVR2, or run both stages in sequence.</p>
+      </div>
+      <div id="health" class="health" title="Backend status">
+        <span class="status-dot"></span>
+        <span>Checking services…</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="panel workspace">
+        <form id="job-form">
+          <label id="drop-zone" class="drop-zone">
+            <input id="file" name="file" type="file" accept="image/png,image/jpeg,image/webp,image/bmp,image/tiff" multiple>
+            <span class="drop-icon">＋</span>
+            <strong>Drop images here</strong>
+            <span>or click to choose multiple PNG, JPEG, WebP, BMP, or TIFF files</span>
+            <small>Paste an image with Ctrl+V</small>
+          </label>
+          <button id="paste-image" class="secondary paste-button" type="button">Paste from clipboard</button>
+
+          <div id="input-preview" class="input-preview hidden">
+            <div id="file-list" class="file-list"></div>
+            <div class="input-actions">
+              <button id="change-file" class="link-button" type="button">Add more images</button>
+              <button id="clear-files" class="link-button muted-button" type="button">Clear selection</button>
+              <span class="drop-more-hint">You can also drop more images anywhere in this area.</span>
+            </div>
+          </div>
+
+          <div class="controls">
+            <label>
+              Pipeline
+              <select id="pipeline" name="pipeline">
+                <option value="cleaner_seedvr2">Cleaner → SeedVR2</option>
+                <option value="cleaner">Artifact cleaner only</option>
+                <option value="seedvr2">SeedVR2 only</option>
+              </select>
+            </label>
+
+            <label id="alpha-control">
+              Cleaner strength
+              <div class="range-line">
+                <input id="alpha" name="alpha" type="range" min="0" max="1.5" step="0.05" value="0.5">
+                <output id="alpha-output">0.50</output>
+              </div>
+              <small>Use the lowest value that removes the repeating pattern.</small>
+            </label>
+
+            <label id="scale-control">
+              Output scale
+              <select id="scale" name="scale">
+                <option value="1">1× restore</option>
+                <option value="1.5">1.5×</option>
+                <option value="2" selected>2×</option>
+                <option value="3">3×</option>
+                <option value="4">4×</option>
+              </select>
+            </label>
+
+            <label id="color-control">
+              Color correction
+              <select id="color-correction" name="color_correction">
+                <option value="wavelet" selected>Wavelet</option>
+                <option value="lab">Lab</option>
+                <option value="adain">AdaIN</option>
+                <option value="none">None</option>
+              </select>
+            </label>
+
+            <label id="seed-control">
+              Seed
+              <div class="seed-line">
+                <input id="seed" name="seed" type="number" min="0" max="9223372036854775807" value="42">
+                <button id="random-seed" type="button" class="secondary">Randomize</button>
+              </div>
+            </label>
+          </div>
+
+          <button id="submit" class="primary" type="submit" disabled>Defractolize!</button>
+          <p id="form-error" class="error hidden" role="alert"></p>
+        </form>
+      </section>
+
+      <section id="active-job" class="panel hidden" aria-live="polite">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Current job</p>
+            <h2 id="job-stage">Waiting for GPU worker</h2>
+          </div>
+          <span id="job-status" class="badge">Queued</span>
+        </div>
+        <div class="progress-track"><div id="progress-bar"></div></div>
+        <p id="job-error" class="error hidden"></p>
+
+        <div id="comparison" class="comparison hidden">
+          <div class="compare-stage">
+            <img id="before-image" alt="Original image">
+            <div id="after-clip" class="after-clip">
+              <img id="after-image" alt="Restored image">
+            </div>
+            <div id="divider" class="divider">
+              <span class="compare-handle" aria-hidden="true">↔</span>
+            </div>
+            <input id="compare-slider" type="range" min="0" max="100" value="50" aria-label="Before and after comparison">
+            <span class="compare-label before-label">Before · Original</span>
+            <span class="compare-label after-label">After · Restored</span>
+          </div>
+          <p class="compare-help">
+            Drag the handle left or right to reveal each version.
+            <output id="compare-percent" for="compare-slider">50% after</output>
+          </p>
+          <div class="result-actions">
+            <a id="download" class="primary button-link" href="#" download>Download PNG</a>
+            <button id="copy-original" class="secondary" type="button">Copy original</button>
+            <button id="copy-result" class="secondary" type="button">Copy result</button>
+            <span id="copy-status" class="copy-status" role="status" aria-live="polite"></span>
+          </div>
+        </div>
+        <div id="batch-results" class="batch-results hidden">
+          <div class="section-heading batch-heading">
+            <div>
+              <p class="eyebrow">Batch results</p>
+              <h2>All processed images</h2>
+            </div>
+          </div>
+          <div id="batch-result-list" class="batch-result-list"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Saved locally</p>
+            <h2>Recent jobs</h2>
+          </div>
+          <button id="refresh-jobs" class="secondary" type="button">Refresh</button>
+        </div>
+        <div id="recent-jobs" class="job-list">
+          <p class="muted">No jobs yet.</p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p><strong>Licensing:</strong> the GPT Image 2 artifact cleaner is PolyForm Noncommercial 1.0.0. Review <code>THIRD_PARTY_NOTICES.md</code> before commercial use.</p>
+      <p>This UI has no authentication and binds to localhost by default. Do not expose it directly to the public internet.</p>
+      <a href="/docs">OpenAPI documentation</a>
+    </footer>
+
+    <script src="/app.js?v=defractolize-label" defer></script>
+  </body>
+</html>
