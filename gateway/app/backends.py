@@ -158,11 +158,15 @@ class SeedVRClient:
         timeout_seconds: float,
         release_timeout_seconds: float = 30,
         release_poll_seconds: float = 0.25,
+        interrupt_grace_seconds: float = 5,
+        restart_timeout_seconds: float = 120,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
         self.release_timeout_seconds = max(0, release_timeout_seconds)
         self.release_poll_seconds = max(0, release_poll_seconds)
+        self.interrupt_grace_seconds = max(0, interrupt_grace_seconds)
+        self.restart_timeout_seconds = max(0, restart_timeout_seconds)
 
     async def health(self) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=5) as client:
@@ -212,6 +216,69 @@ class SeedVRClient:
                 self.release_timeout_seconds,
             )
         return False
+
+    async def recover_timed_out_prompt(
+        self,
+        client: httpx.AsyncClient,
+        prompt_id: str,
+    ) -> None:
+        """Interrupt a timed-out prompt, restarting ComfyUI if it will not yield."""
+        try:
+            response = await client.post(f"{self.base_url}/interrupt", timeout=5)
+            response.raise_for_status()
+        except Exception as error:  # noqa: BLE001 - restart is the fallback
+            LOGGER.warning("Could not interrupt timed-out SeedVR prompt: %s", error)
+
+        deadline = time.monotonic() + self.interrupt_grace_seconds
+        while time.monotonic() < deadline:
+            await asyncio.sleep(min(0.25, self.interrupt_grace_seconds))
+            try:
+                queue_response = await client.get(f"{self.base_url}/queue", timeout=5)
+                queue_response.raise_for_status()
+                queue = queue_response.json()
+                active_ids = {
+                    item[1]
+                    for key in ("queue_running", "queue_pending")
+                    for item in queue.get(key, [])
+                    if isinstance(item, list) and len(item) > 1
+                }
+                if prompt_id not in active_ids:
+                    return
+            except Exception as error:  # noqa: BLE001 - retry during grace period
+                LOGGER.warning("Could not confirm SeedVR interrupt: %s", error)
+
+        LOGGER.error(
+            "SeedVR prompt %s ignored interrupt; restarting the worker",
+            prompt_id,
+        )
+        try:
+            response = await client.post(
+                f"{self.base_url}/defractalize/restart",
+                timeout=5,
+            )
+            response.raise_for_status()
+        except Exception as error:  # noqa: BLE001 - process may exit before replying
+            LOGGER.warning("SeedVR restart request ended with: %s", error)
+
+        if self.restart_timeout_seconds == 0:
+            return
+
+        restart_deadline = time.monotonic() + self.restart_timeout_seconds
+        while time.monotonic() < restart_deadline:
+            await asyncio.sleep(1)
+            try:
+                response = await client.get(
+                    f"{self.base_url}/system_stats",
+                    timeout=5,
+                )
+                response.raise_for_status()
+                return
+            except Exception:  # noqa: BLE001 - expected while container restarts
+                pass
+        LOGGER.error(
+            "SeedVR did not become healthy within %.1f seconds after restart",
+            self.restart_timeout_seconds,
+        )
 
     async def upscale(
         self,
@@ -285,6 +352,7 @@ class SeedVRClient:
                     await asyncio.sleep(0.5)
 
                 if output_info is None:
+                    await self.recover_timed_out_prompt(client, prompt_id)
                     raise BackendError(
                         f"SeedVR timed out after {self.timeout_seconds:.0f} seconds"
                     )

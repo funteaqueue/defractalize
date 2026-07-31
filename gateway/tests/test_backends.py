@@ -69,3 +69,65 @@ async def test_seedvr_release_waits_for_confirmed_vram_cleanup() -> None:
         assert await seedvr.release_gpu(client)
 
     assert stats_reads == 2
+
+
+@pytest.mark.asyncio
+async def test_seedvr_timeout_restarts_worker_when_interrupt_is_ignored() -> None:
+    paths: list[str] = []
+    stats_reads = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal stats_reads
+        paths.append(request.url.path)
+        if request.url.path == "/interrupt":
+            return httpx.Response(200)
+        if request.url.path == "/queue":
+            return httpx.Response(
+                200,
+                json={"queue_running": [[1, "prompt-1"]], "queue_pending": []},
+            )
+        if request.url.path == "/defractalize/restart":
+            return httpx.Response(200)
+        if request.url.path == "/system_stats":
+            stats_reads += 1
+            return httpx.Response(200, json={"devices": []})
+        return httpx.Response(404)
+
+    seedvr = SeedVRClient(
+        "http://seedvr",
+        timeout_seconds=10,
+        interrupt_grace_seconds=0,
+        restart_timeout_seconds=1,
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        await seedvr.recover_timed_out_prompt(client, "prompt-1")
+
+    assert paths[:2] == ["/interrupt", "/defractalize/restart"]
+    assert stats_reads == 1
+
+
+@pytest.mark.asyncio
+async def test_seedvr_timeout_does_not_restart_after_successful_interrupt() -> None:
+    paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        if request.url.path == "/interrupt":
+            return httpx.Response(200)
+        if request.url.path == "/queue":
+            return httpx.Response(
+                200,
+                json={"queue_running": [], "queue_pending": []},
+            )
+        return httpx.Response(404)
+
+    seedvr = SeedVRClient(
+        "http://seedvr",
+        timeout_seconds=10,
+        interrupt_grace_seconds=0.01,
+        restart_timeout_seconds=0,
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        await seedvr.recover_timed_out_prompt(client, "prompt-1")
+
+    assert "/defractalize/restart" not in paths

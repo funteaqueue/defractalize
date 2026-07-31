@@ -62,6 +62,13 @@ def main() -> None:
         custom_node / "__init__.py",
     )
 
+    recovery_node = COMFY_ROOT / "custom_nodes" / "defractalize_recovery"
+    recovery_node.mkdir(parents=True, exist_ok=True)
+    materialize(
+        "/bootstrap/recovery_node.py",
+        recovery_node / "__init__.py",
+    )
+
     input_directory = DATA_ROOT / "input"
     output_directory = DATA_ROOT / "output"
     temp_directory = DATA_ROOT / "temp"

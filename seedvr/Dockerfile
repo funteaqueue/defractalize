@@ -24,6 +24,7 @@ RUN git clone https://github.com/comfyanonymous/ComfyUI.git /opt/ComfyUI \
 
 WORKDIR /bootstrap
 COPY bootstrap.py .
+COPY recovery_node.py .
 
 EXPOSE 8188
 

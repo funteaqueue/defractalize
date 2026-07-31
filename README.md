@@ -11,7 +11,9 @@ The combined pipeline always runs the cleaner first and SeedVR2 second. GPU jobs
 serialized, and the cleaner releases its models before SeedVR2 begins, so the tested
 12 GB GPU configuration does not need both models resident at once. After SeedVR2
 finishes, the gateway requests a model unload and waits for ComfyUI to confirm that
-its PyTorch VRAM reservation has been released before marking the job complete.
+its PyTorch VRAM reservation has been released before marking the job complete. If a
+timed-out node ignores ComfyUI's interrupt request, the SeedVR worker restarts
+automatically so a failed job cannot leave the GPU busy.
 
 ## Screenshots
 
