@@ -66,3 +66,20 @@ def test_combined_pipeline_runs_in_order_and_serves_result(tmp_path, monkeypatch
         assert preview.status_code == 200
         assert preview.headers["content-type"].startswith("image/webp")
         assert preview.content.startswith(b"RIFF")
+
+
+def test_job_list_accepts_progressively_larger_windows(tmp_path, monkeypatch) -> None:
+    requested_limits: list[int] = []
+
+    monkeypatch.setattr(main, "DATA_DIR", tmp_path)
+    with TestClient(main.app) as client:
+        async def record_limit(limit: int):
+            requested_limits.append(limit)
+            return []
+
+        client.app.state.store.list = record_limit
+        response = client.get("/api/jobs?limit=121")
+
+    assert response.status_code == 200
+    assert response.json() == []
+    assert requested_limits == [121]

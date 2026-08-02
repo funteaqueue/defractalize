@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="dark">
     <title>defractalize</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><circle cx=%2232%22 cy=%2232%22 r=%2228%22 fill=%22%2373d7ba%22/><path d=%22M20 32h24M25 25l-7 7 7 7M39 25l7 7-7 7%22 fill=%22none%22 stroke=%22%2307130f%22 stroke-width=%225%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/></svg>">
-    <link rel="stylesheet" href="/styles.css?v=defractolize-label">
+    <link rel="stylesheet" href="/styles.css?v=load-more-jobs">
   </head>
   <body>
     <header>
@@ -124,6 +124,8 @@
             <output id="compare-percent" for="compare-slider">50% after</output>
           </p>
           <div class="result-actions">
+            <button id="previous-image" class="secondary hidden" type="button">← Previous image</button>
+            <button id="next-image" class="secondary hidden" type="button">Next image →</button>
             <a id="download" class="primary button-link" href="#" download>Download PNG</a>
             <button id="copy-original" class="secondary" type="button">Copy original</button>
             <button id="copy-result" class="secondary" type="button">Copy result</button>
@@ -152,6 +154,9 @@
         <div id="recent-jobs" class="job-list">
           <p class="muted">No jobs yet.</p>
         </div>
+        <div class="load-more-row">
+          <button id="load-more-jobs" class="secondary hidden" type="button">Load more images</button>
+        </div>
       </section>
     </main>
 
@@ -161,6 +166,6 @@
       <a href="/docs">OpenAPI documentation</a>
     </footer>
 
-    <script src="/app.js?v=defractolize-label" defer></script>
+    <script src="/app.js?v=load-more-jobs" defer></script>
   </body>
 </html>

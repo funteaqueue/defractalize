@@ -276,7 +276,7 @@ async def create_job(
 
 @app.get("/api/jobs")
 async def list_jobs(request: Request, limit: int = 20) -> list[dict[str, Any]]:
-    return await store_from(request).list(limit=max(1, min(limit, 100)))
+    return await store_from(request).list(limit=max(1, min(limit, 5000)))
 
 
 @app.get("/api/jobs/{job_id}")

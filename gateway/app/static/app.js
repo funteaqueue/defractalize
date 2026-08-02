@@ -33,19 +33,26 @@ const elements = {
   divider: $("#divider"),
   compareSlider: $("#compare-slider"),
   comparePercent: $("#compare-percent"),
+  previousImage: $("#previous-image"),
+  nextImage: $("#next-image"),
   download: $("#download"),
   copyOriginal: $("#copy-original"),
   copyResult: $("#copy-result"),
   copyStatus: $("#copy-status"),
   recentJobs: $("#recent-jobs"),
   refreshJobs: $("#refresh-jobs"),
+  loadMoreJobs: $("#load-more-jobs"),
 };
 
+const RECENT_JOBS_PAGE_SIZE = 20;
 let selectedFiles = [];
 let previewUrls = [];
 let pasteFallbackTimer = null;
 let batchResults = [];
+let recentComparisonJobs = [];
+let recentJobsLimit = RECENT_JOBS_PAGE_SIZE;
 let activePollToken = 0;
+let activeComparisonJobId = null;
 
 function isSupportedImage(file) {
   if (!file) return false;
@@ -203,6 +210,7 @@ function renderJob(job, batchLabel = "") {
   showError(elements.jobError, job.error || "");
 
   if (job.status === "completed") {
+    activeComparisonJobId = job.id;
     const cacheBust = encodeURIComponent(job.updated_at);
     elements.beforeImage.src = `/api/jobs/${job.id}/input`;
     elements.afterImage.src = `/api/jobs/${job.id}/result?v=${cacheBust}`;
@@ -214,11 +222,56 @@ function renderJob(job, batchLabel = "") {
     elements.comparison.classList.remove("hidden");
     elements.afterImage.onload = updateComparison;
     elements.beforeImage.onload = updateComparison;
+    updateImageNavigation();
   } else {
     elements.copyOriginal.disabled = true;
     elements.copyResult.disabled = true;
     elements.comparison.classList.add("hidden");
   }
+}
+
+function imageNavigationPool() {
+  if (batchResults.some((job) => job.id === activeComparisonJobId)) {
+    return { jobs: batchResults, label: "Image" };
+  }
+  if (recentComparisonJobs.some((job) => job.id === activeComparisonJobId)) {
+    return { jobs: recentComparisonJobs, label: "Saved image" };
+  }
+  return { jobs: [], label: "Image" };
+}
+
+function updateImageNavigation() {
+  const { jobs } = imageNavigationPool();
+  const currentIndex = jobs.findIndex((job) => job.id === activeComparisonJobId);
+  const canNavigate = jobs.length > 1 && currentIndex >= 0;
+  elements.previousImage.classList.toggle("hidden", !canNavigate);
+  elements.nextImage.classList.toggle("hidden", !canNavigate);
+  if (!canNavigate) {
+    elements.previousImage.removeAttribute("title");
+    elements.nextImage.removeAttribute("title");
+    return;
+  }
+  const previousIndex = (currentIndex - 1 + jobs.length) % jobs.length;
+  const nextIndex = (currentIndex + 1) % jobs.length;
+  elements.previousImage.title = `View image ${previousIndex + 1} of ${jobs.length}`;
+  elements.nextImage.title = `View image ${nextIndex + 1} of ${jobs.length}`;
+}
+
+function showAdjacentImage(offset) {
+  const { jobs, label } = imageNavigationPool();
+  if (!jobs.length) return;
+  const currentIndex = jobs.findIndex((job) => job.id === activeComparisonJobId);
+  const normalizedIndex = ((currentIndex + offset) % jobs.length + jobs.length) % jobs.length;
+  renderJob(jobs[normalizedIndex], `${label} ${normalizedIndex + 1} of ${jobs.length}`);
+  elements.activeJob.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function showBatchResult(index) {
+  if (!batchResults.length) return;
+  const normalizedIndex = ((index % batchResults.length) + batchResults.length) % batchResults.length;
+  const job = batchResults[normalizedIndex];
+  renderJob(job, `Image ${normalizedIndex + 1} of ${batchResults.length}`);
+  elements.activeJob.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function renderBatchResults() {
@@ -250,19 +303,19 @@ function renderBatchResults() {
     view.type = "button";
     view.className = "secondary";
     view.textContent = "View comparison";
-    view.addEventListener("click", () => {
-      renderJob(job, `Image ${index + 1} of ${batchResults.length}`);
-      elements.activeJob.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+    view.addEventListener("click", () => showBatchResult(index));
     details.append(name, meta, view);
     card.append(thumbs, details);
     return card;
   }));
+  updateImageNavigation();
 }
 
 function clearBatchResults() {
   batchResults = [];
+  activeComparisonJobId = null;
   renderBatchResults();
+  updateImageNavigation();
 }
 
 function containsDraggedFiles(event) {
@@ -335,10 +388,16 @@ function formatDate(value) {
 }
 
 async function loadJobs() {
+  elements.loadMoreJobs.disabled = true;
   try {
-    const response = await fetch("/api/jobs?limit=20");
+    const response = await fetch(`/api/jobs?limit=${recentJobsLimit + 1}`);
     if (!response.ok) throw new Error("Could not load jobs");
-    const jobs = await response.json();
+    const availableJobs = await response.json();
+    const hasMoreJobs = availableJobs.length > recentJobsLimit;
+    const jobs = availableJobs.slice(0, recentJobsLimit);
+    recentComparisonJobs = jobs.filter((job) => job.status === "completed" && job.result_available);
+    updateImageNavigation();
+    elements.loadMoreJobs.classList.toggle("hidden", !hasMoreJobs);
     if (!jobs.length) {
       elements.recentJobs.innerHTML = '<p class="muted">No jobs yet.</p>';
       return;
@@ -401,6 +460,9 @@ async function loadJobs() {
     }));
   } catch (error) {
     elements.recentJobs.innerHTML = `<p class="error">${error.message}</p>`;
+  } finally {
+    elements.loadMoreJobs.disabled = false;
+    elements.loadMoreJobs.textContent = "Load more images";
   }
 }
 
@@ -487,6 +549,13 @@ elements.randomSeed.addEventListener("click", () => {
 elements.compareSlider.addEventListener("input", updateComparison);
 window.addEventListener("resize", updateComparison);
 elements.refreshJobs.addEventListener("click", loadJobs);
+elements.loadMoreJobs.addEventListener("click", async () => {
+  recentJobsLimit += RECENT_JOBS_PAGE_SIZE;
+  elements.loadMoreJobs.textContent = "Loading…";
+  await loadJobs();
+});
+elements.previousImage.addEventListener("click", () => showAdjacentImage(-1));
+elements.nextImage.addEventListener("click", () => showAdjacentImage(1));
 elements.copyOriginal.addEventListener("click", () => {
   copyImageToClipboard(elements.beforeImage.src, "Original");
 });
